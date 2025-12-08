@@ -11,7 +11,8 @@ interface CameraProps {
 }
 
 // iPhone 6 vb. eski cihazlar için Ekranı Açık Tutma Hack'i
-const IOS_WAKE_LOCK_VIDEO = "data:video/mp4;base64,AAAAHGZ0eXGlc29tAAAAAAACAg=="; 
+// Geçerli, sessiz, 1x1 piksellik siyah MP4 videosu (Wake Lock için)
+const IOS_WAKE_LOCK_VIDEO = "data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAACQm1kYXQAAAKABGB/wAAAAAAAAAAAAIyZMOvwAAAABBgaft5je4AAAAAly1moAAAAAAAMav+AAAAAkW1vb3YAAABsbXZoAAAAAMj4U2PI+FNjAAABAAABAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAABudHJhawAAAFx0a2hkAAAAAdI+U2PSPlNjAAAAAQAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAEAAAEAAAAAAQAAAAAgbWRpYQAAACBtZGh1AAAAANI+U2PSPlNjAAABAAABAAAAAAA5AAAAGWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABtaW5mAAAAFHZtaGQAAAAQAAAAAAAAAAAAAAAkZGluZgAAABRkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAEibWJscQAAALRhdmMxAAAAAAAAAAEAAAEAAAAAAAAAAAAAAAEAAAEAAAAAAAEADgAAAAEAAAAAAAYAAQAAAAAAIAAAACAAAAAAAAAAAAAAAAAAAAAAAAEABAExYXZjQwAp/4D/gAAAExBnz/4AAAAMZ0BAAAAAAwABAAAADGltZyIAAAAAAAAAGHN0dHMAAAAAAAAAAQAAAAEAAAEAAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAABAAAAAQAAABxzdHN6AAAAAAAAAAAAAAABAAAALQAAABxzdGNvAAAAAAAAAAEAAAAsAAAAAQAA";
 
 export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -40,6 +41,7 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
     };
     requestWakeLock();
 
+    // Video oynatmayı tetikle (User interaction gerekebilir ama autoPlay yardımcı olur)
     if (wakeLockVideoRef.current) {
       wakeLockVideoRef.current.play().catch(() => {});
     }
@@ -294,6 +296,7 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
   return (
     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center overflow-hidden">
       
+      {/* iOS LEGACY WAKE LOCK (Geçerli MP4) */}
       <video 
         ref={wakeLockVideoRef}
         playsInline 
