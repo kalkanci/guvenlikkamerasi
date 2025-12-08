@@ -1,0 +1,8 @@
+{
+  "name": "GuvenlikKamerasi",
+  "description": "Eski iOS cihazları yüksek performanslı güvenlik kamerasına dönüştüren WebRTC uygulaması.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
