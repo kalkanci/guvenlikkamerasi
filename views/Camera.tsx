@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { db } from '../firebaseConfig';
 import { ref, set, onValue, push, onDisconnect, remove, update } from 'firebase/database';
-import { rtcConfig, mediaConstraints, offerOptions } from '../utils/webrtc';
+import { rtcConfig, mediaConstraints, offerOptions, forceH264 } from '../utils/webrtc';
 import { Button } from '../components/Button';
 import { RemoteControls } from '../types';
 
@@ -100,28 +100,30 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
   // --- WEBRTC & FIREBASE ---
   useEffect(() => {
     const roomRef = ref(db, `rooms/${roomId}`);
-    // Odaya girerken temizlik yap (Eski session kalıntılarını sil)
     set(roomRef, null).then(() => {
         startStream();
     });
     
-    // Disconnect olunca sil
     onDisconnect(roomRef).remove();
 
     const startStream = async () => {
       try {
         setStatus('Kamera Başlatılıyor...');
+        // Constraints güncellendi, width/height kaldırıldı
         const stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
         localStreamRef.current = stream;
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          // Explicit play çağrısı
+          videoRef.current.play().catch(e => console.error("Local play error:", e));
         }
 
         initializePeerConnection(stream);
       } catch (err) {
         console.error("Kamera hatası:", err);
-        setStatus('Kamera İzni Verilmedi!');
+        setStatus('Kamera Erişimi Yok!');
+        alert("Kamera başlatılamadı. Lütfen Safari izinlerini kontrol edin.");
       }
     };
 
@@ -171,7 +173,7 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
         if (currentTrack) currentTrack.stop();
         const newStream = await navigator.mediaDevices.getUserMedia({
           video: {
-            ...mediaConstraints.video as MediaTrackConstraints,
+            // width/height kullanmadan sadece facingMode
             facingMode: cameraFacing
           }
         });
@@ -185,6 +187,7 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
         localStreamRef.current = newMediaStream;
         if (videoRef.current) {
           videoRef.current.srcObject = newMediaStream;
+          videoRef.current.play().catch(e => {});
         }
 
         if (peerConnectionRef.current) {
@@ -254,11 +257,19 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
 
     try {
       const offerDescription = await pc.createOffer(offerOptions);
-      await pc.setLocalDescription(offerDescription);
+      
+      // H.264 ZORLAMA (iPhone 6 için KRİTİK)
+      const sdpWithH264 = forceH264(offerDescription.sdp || "");
+      const finalOffer = new RTCSessionDescription({
+          type: offerDescription.type,
+          sdp: sdpWithH264
+      });
+
+      await pc.setLocalDescription(finalOffer);
 
       await set(ref(db, `rooms/${roomId}/offer`), {
-        type: offerDescription.type,
-        sdp: offerDescription.sdp,
+        type: finalOffer.type,
+        sdp: finalOffer.sdp,
       });
 
       onValue(ref(db, `rooms/${roomId}/answer`), (snapshot) => {
@@ -304,10 +315,11 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
         </div>
       )}
 
+      {/* DÜZELTME: Opacity varsayılan olarak %100 yapıldı. Sadece güç tasarrufunda kapanır. */}
       <video
         ref={videoRef}
         autoPlay playsInline muted
-        className={`absolute w-full h-full object-cover pointer-events-none transition-opacity duration-500 ${powerSavingMode ? 'opacity-0' : 'opacity-20'}`}
+        className={`absolute w-full h-full object-cover pointer-events-none transition-opacity duration-500 ${powerSavingMode ? 'opacity-0' : 'opacity-100'}`}
       />
 
       <div className={`z-10 flex flex-col items-center justify-center space-y-6 w-full max-w-sm px-6 transition-opacity duration-300 ${powerSavingMode ? 'opacity-0' : 'opacity-100'}`}>
