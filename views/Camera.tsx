@@ -10,53 +10,16 @@ interface CameraProps {
   onBack: () => void;
 }
 
-// iPhone 6 vb. eski cihazlar için Ekranı Açık Tutma Hack'i
-const IOS_WAKE_LOCK_VIDEO = "data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAACQm1kYXQAAAKABGB/wAAAAAAAAAAAAIyZMOvwAAAABBgaft5je4AAAAAly1moAAAAAAAMav+AAAAAkW1vb3YAAABsbXZoAAAAAMj4U2PI+FNjAAABAAABAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAABudHJhawAAAFx0a2hkAAAAAdI+U2PSPlNjAAAAAQAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAEAAAEAAAAAAQAAAAAgbWRpYQAAACBtZGh1AAAAANI+U2PSPlNjAAABAAABAAAAAAA5AAAAGWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABtaW5mAAAAFHZtaGQAAAAQAAAAAAAAAAAAAAAkZGluZgAAABRkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAEibWJscQAAALRhdmMxAAAAAAAAAAEAAAEAAAAAAAAAAAAAAAEAAAEAAAAAAAEADgAAAAEAAAAAAAYAAQAAAAAAIAAAACAAAAAAAAAAAAAAAAAAAAAAAAEABAExYXZjQwAp/4D/gAAAExBnz/4AAAAMZ0BAAAAAAwABAAAADGltZyIAAAAAAAAAGHN0dHMAAAAAAAAAAQAAAAEAAAEAAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAABAAAAAQAAABxzdHN6AAAAAAAAAAAAAAABAAAALQAAABxzdGNvAAAAAAAAAAEAAAAsAAAAAQAA";
-
 export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const wakeLockVideoRef = useRef<HTMLVideoElement>(null); 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   
   const [status, setStatus] = useState<string>('Hazırlanıyor...');
   const [activeClient, setActiveClient] = useState<boolean>(false);
-  
-  // State for camera controls
   const [torchEnabled, setTorchEnabled] = useState<boolean>(false);
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('environment');
   const [powerSavingMode, setPowerSavingMode] = useState<boolean>(false);
-
-  // --- WAKE LOCK ---
-  useEffect(() => {
-    let wakeLock: any = null;
-    const requestWakeLock = async () => {
-      try {
-        if ('wakeLock' in navigator) {
-          // @ts-ignore
-          wakeLock = await navigator.wakeLock.request('screen');
-        }
-      } catch (err) {}
-    };
-    requestWakeLock();
-
-    if (wakeLockVideoRef.current) {
-      wakeLockVideoRef.current.play().catch(() => {});
-    }
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        requestWakeLock();
-        wakeLockVideoRef.current?.play().catch(() => {});
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (wakeLock) wakeLock.release();
-    };
-  }, []);
 
   // --- BATARYA DURUMU ---
   useEffect(() => {
@@ -109,21 +72,25 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
     const startStream = async () => {
       try {
         setStatus('Kamera Başlatılıyor...');
-        // Constraints güncellendi, width/height kaldırıldı
         const stream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
         localStreamRef.current = stream;
 
         if (videoRef.current) {
+          // iOS 12 / Safari 11+ için srcObject desteği vardır ama
+          // bazen eski usül object URL gerekebilir. Standart yöntemle başlıyoruz.
           videoRef.current.srcObject = stream;
-          // Explicit play çağrısı
-          videoRef.current.play().catch(e => console.error("Local play error:", e));
+          
+          // Video metadata yüklendiğinde oynatmayı garanti et
+          videoRef.current.onloadedmetadata = () => {
+              videoRef.current?.play().catch(e => console.error("Play error:", e));
+          };
         }
 
         initializePeerConnection(stream);
       } catch (err) {
         console.error("Kamera hatası:", err);
-        setStatus('Kamera Erişimi Yok!');
-        alert("Kamera başlatılamadı. Lütfen Safari izinlerini kontrol edin.");
+        setStatus('Kamera Hatası! Ayarları kontrol edin.');
+        alert("Kamera açılamadı. Lütfen başka bir tarayıcı deneyin veya iOS sürümünüzün desteklediğinden emin olun.");
       }
     };
 
@@ -138,7 +105,6 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
       }
       remove(roomRef).catch(err => console.error("Oda silinemedi:", err));
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
   // --- KONTROLLER ---
@@ -173,8 +139,11 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
         if (currentTrack) currentTrack.stop();
         const newStream = await navigator.mediaDevices.getUserMedia({
           video: {
-            // width/height kullanmadan sadece facingMode
-            facingMode: cameraFacing
+            // Değişim sırasında da düşük çözünürlüğü koru
+            facingMode: cameraFacing,
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 15 }
           }
         });
         const newVideoTrack = newStream.getVideoTracks()[0];
@@ -202,7 +171,6 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
     };
 
     switchCamera();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraFacing]);
 
   const applyTorchToTrack = (track: MediaStreamTrack | undefined, enabled: boolean) => {
@@ -229,13 +197,6 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
       pc.addTrack(track, stream);
     });
 
-    pc.ontrack = (event) => {
-      const remoteAudio = new Audio();
-      remoteAudio.srcObject = event.streams[0];
-      remoteAudio.autoplay = true;
-      remoteAudio.play().catch(e => {});
-    };
-
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         push(ref(db, `rooms/${roomId}/iceCandidates/caller`), event.candidate.toJSON());
@@ -255,10 +216,16 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
       }
     };
 
+    // Ses dönüşü için event (Viewer konuşursa duymak için)
+    pc.ontrack = (event) => {
+        const remoteAudio = new Audio();
+        remoteAudio.srcObject = event.streams[0];
+        remoteAudio.autoplay = true;
+        remoteAudio.play().catch(e => {});
+    };
+
     try {
       const offerDescription = await pc.createOffer(offerOptions);
-      
-      // H.264 ZORLAMA (iPhone 6 için KRİTİK)
       const sdpWithH264 = forceH264(offerDescription.sdp || "");
       const finalOffer = new RTCSessionDescription({
           type: offerDescription.type,
@@ -295,12 +262,6 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center overflow-hidden">
-      <video 
-        ref={wakeLockVideoRef}
-        playsInline muted loop autoPlay
-        src={IOS_WAKE_LOCK_VIDEO}
-        className="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none"
-      />
       
       {powerSavingMode && (
         <div 
@@ -315,10 +276,19 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
         </div>
       )}
 
-      {/* DÜZELTME: Opacity varsayılan olarak %100 yapıldı. Sadece güç tasarrufunda kapanır. */}
+      {/* 
+         iPhone 6 Fix:
+         - webkit-playsinline ekledik (React prop olarak geçmezse diye HTML attribute olarak da düşünebiliriz ama playsInline React'te yeterli).
+         - WakeLock videosunu kaldırdık (GPU yetersizliği olabilir).
+         - Opacity varsayılan 100.
+         - Transform Z0 GPU hızlandırması için.
+      */}
       <video
         ref={videoRef}
-        autoPlay playsInline muted
+        autoPlay 
+        playsInline 
+        muted
+        style={{ transform: 'translateZ(0)' }} 
         className={`absolute w-full h-full object-cover pointer-events-none transition-opacity duration-500 ${powerSavingMode ? 'opacity-0' : 'opacity-100'}`}
       />
 
