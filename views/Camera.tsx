@@ -11,7 +11,6 @@ interface CameraProps {
 }
 
 // iPhone 6 vb. eski cihazlar için Ekranı Açık Tutma Hack'i
-// Geçerli, sessiz, 1x1 piksellik siyah MP4 videosu (Wake Lock için)
 const IOS_WAKE_LOCK_VIDEO = "data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAACQm1kYXQAAAKABGB/wAAAAAAAAAAAAIyZMOvwAAAABBgaft5je4AAAAAly1moAAAAAAAMav+AAAAAkW1vb3YAAABsbXZoAAAAAMj4U2PI+FNjAAABAAABAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAABudHJhawAAAFx0a2hkAAAAAdI+U2PSPlNjAAAAAQAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAEAAAEAAAAAAQAAAAAgbWRpYQAAACBtZGh1AAAAANI+U2PSPlNjAAABAAABAAAAAAA5AAAAGWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABtaW5mAAAAFHZtaGQAAAAQAAAAAAAAAAAAAAAkZGluZgAAABRkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAAEibWJscQAAALRhdmMxAAAAAAAAAAEAAAEAAAAAAAAAAAAAAAEAAAEAAAAAAAEADgAAAAEAAAAAAAYAAQAAAAAAIAAAACAAAAAAAAAAAAAAAAAAAAAAAAEABAExYXZjQwAp/4D/gAAAExBnz/4AAAAMZ0BAAAAAAwABAAAADGltZyIAAAAAAAAAGHN0dHMAAAAAAAAAAQAAAAEAAAEAAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAABAAAAAQAAABxzdHN6AAAAAAAAAAAAAAABAAAALQAAABxzdGNvAAAAAAAAAAEAAAAsAAAAAQAA";
 
 export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
@@ -28,7 +27,7 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('environment');
   const [powerSavingMode, setPowerSavingMode] = useState<boolean>(false);
 
-  // --- WAKE LOCK (EKRAN AÇIK TUTMA) ---
+  // --- WAKE LOCK ---
   useEffect(() => {
     let wakeLock: any = null;
     const requestWakeLock = async () => {
@@ -41,7 +40,6 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
     };
     requestWakeLock();
 
-    // Video oynatmayı tetikle (User interaction gerekebilir ama autoPlay yardımcı olur)
     if (wakeLockVideoRef.current) {
       wakeLockVideoRef.current.play().catch(() => {});
     }
@@ -60,15 +58,14 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
     };
   }, []);
 
-  // --- BATARYA DURUMU İZLEME ---
+  // --- BATARYA DURUMU ---
   useEffect(() => {
     const updateBatteryStatus = async () => {
-      // @ts-ignore - Battery API standart değil ama Chrome/Android destekliyor
+      // @ts-ignore 
       if (navigator.getBattery) {
         try {
           // @ts-ignore
           const battery = await navigator.getBattery();
-          
           const reportStatus = () => {
             update(ref(db, `rooms/${roomId}/status`), {
               batteryLevel: Math.round(battery.level * 100),
@@ -76,20 +73,15 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
               lastOnline: Date.now()
             });
           };
-
           reportStatus();
           battery.addEventListener('levelchange', reportStatus);
           battery.addEventListener('chargingchange', reportStatus);
-
           return () => {
             battery.removeEventListener('levelchange', reportStatus);
             battery.removeEventListener('chargingchange', reportStatus);
           };
-        } catch (e) {
-          console.log("Battery API Error", e);
-        }
+        } catch (e) { console.log("Battery API Error", e); }
       } else {
-        // API yoksa varsayılan veya boş değer gönder
         update(ref(db, `rooms/${roomId}/status`), {
           batteryLevel: null,
           isCharging: false,
@@ -97,22 +89,23 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
         });
       }
     };
-
     updateBatteryStatus();
     
-    // Heartbeat (Canlılık Sinyali) - Her 10 saniyede bir
     const interval = setInterval(() => {
-       update(ref(db, `rooms/${roomId}/status`), {
-         lastOnline: Date.now()
-       });
+       update(ref(db, `rooms/${roomId}/status`), { lastOnline: Date.now() });
     }, 10000);
-
     return () => clearInterval(interval);
   }, [roomId]);
 
-  // --- WEBRTC & FIREBASE BAŞLATMA ---
+  // --- WEBRTC & FIREBASE ---
   useEffect(() => {
     const roomRef = ref(db, `rooms/${roomId}`);
+    // Odaya girerken temizlik yap (Eski session kalıntılarını sil)
+    set(roomRef, null).then(() => {
+        startStream();
+    });
+    
+    // Disconnect olunca sil
     onDisconnect(roomRef).remove();
 
     const startStream = async () => {
@@ -132,8 +125,6 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
       }
     };
 
-    startStream();
-
     return () => {
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => {
@@ -148,7 +139,7 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
-  // --- KONTROLLERİ DİNLE ---
+  // --- KONTROLLER ---
   useEffect(() => {
     const controlsRef = ref(db, `rooms/${roomId}/controls`);
     const unsubscribe = onValue(controlsRef, (snapshot) => {
@@ -161,7 +152,7 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
     return () => unsubscribe();
   }, [roomId]);
 
-  // --- FLAŞ KONTROL ---
+  // --- FLAŞ ---
   useEffect(() => {
     if (!localStreamRef.current) return;
     const videoTrack = localStreamRef.current.getVideoTracks()[0];
@@ -223,9 +214,7 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
             advanced: [{ torch: enabled }]
           }).catch(e => console.log('Torch error', e));
         }
-    } catch(e) {
-        console.log("Torch yeteneği okunamadı");
-    }
+    } catch(e) { console.log("Torch yok"); }
   };
 
   const initializePeerConnection = async (stream: MediaStream) => {
@@ -241,7 +230,7 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
       const remoteAudio = new Audio();
       remoteAudio.srcObject = event.streams[0];
       remoteAudio.autoplay = true;
-      remoteAudio.play().catch(e => console.log("Ses oynatma hatası:", e));
+      remoteAudio.play().catch(e => {});
     };
 
     pc.onicecandidate = (event) => {
@@ -295,18 +284,13 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
 
   return (
     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center overflow-hidden">
-      
-      {/* iOS LEGACY WAKE LOCK (Geçerli MP4) */}
       <video 
         ref={wakeLockVideoRef}
-        playsInline 
-        muted 
-        loop 
-        autoPlay
+        playsInline muted loop autoPlay
         src={IOS_WAKE_LOCK_VIDEO}
         className="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none"
       />
-
+      
       {powerSavingMode && (
         <div 
           onClick={() => setPowerSavingMode(false)}
@@ -316,26 +300,19 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
             <div className="w-4 h-4 rounded-full bg-red-600 mx-auto mb-2" />
             <p className="font-mono text-xs tracking-widest">KAYIT DEVAM EDİYOR</p>
           </div>
-          <p className="absolute bottom-10 opacity-5 text-white text-[10px]">
-            Açmak için ekrana dokunun
-          </p>
+          <p className="absolute bottom-10 opacity-5 text-white text-[10px]">Açmak için ekrana dokunun</p>
         </div>
       )}
 
       <video
         ref={videoRef}
-        autoPlay
-        playsInline
-        muted
+        autoPlay playsInline muted
         className={`absolute w-full h-full object-cover pointer-events-none transition-opacity duration-500 ${powerSavingMode ? 'opacity-0' : 'opacity-20'}`}
       />
 
       <div className={`z-10 flex flex-col items-center justify-center space-y-6 w-full max-w-sm px-6 transition-opacity duration-300 ${powerSavingMode ? 'opacity-0' : 'opacity-100'}`}>
-        
         <div className={`relative flex items-center justify-center w-32 h-32 rounded-full border-4 transition-all duration-700 ${
-          activeClient 
-            ? 'border-red-600 bg-red-900/20 shadow-[0_0_50px_rgba(220,38,38,0.6)]' 
-            : 'border-yellow-600 bg-yellow-900/10'
+          activeClient ? 'border-red-600 bg-red-900/20 shadow-[0_0_50px_rgba(220,38,38,0.6)]' : 'border-yellow-600 bg-yellow-900/10'
         }`}>
            {activeClient ? (
              <div className="w-14 h-14 bg-red-600 rounded-lg animate-pulse shadow-lg shadow-red-900" />
@@ -345,16 +322,10 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
         </div>
 
         <div className="text-center space-y-2">
-            <h2 className={`text-3xl font-black tracking-tighter uppercase transition-colors duration-300 ${
-              activeClient ? 'text-red-500 animate-pulse' : 'text-yellow-500'
-            }`}>
+            <h2 className={`text-3xl font-black tracking-tighter uppercase transition-colors duration-300 ${activeClient ? 'text-red-500 animate-pulse' : 'text-yellow-500'}`}>
               {activeClient ? 'CANLI YAYIN' : status}
             </h2>
-            
-            {!activeClient && (
-              <p className="text-gray-500 text-sm font-mono animate-pulse">İzleyici bekleniyor...</p>
-            )}
-
+            {!activeClient && <p className="text-gray-500 text-sm font-mono animate-pulse">İzleyici bekleniyor...</p>}
             <div className="inline-block bg-gray-900 px-6 py-3 rounded-full border border-gray-800 mt-6 shadow-xl">
               <p className="text-xs text-gray-400 font-mono tracking-widest flex items-center justify-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -366,26 +337,10 @@ export const Camera: React.FC<CameraProps> = ({ roomId, onBack }) => {
 
       <div className={`absolute bottom-10 z-20 w-full px-8 max-w-md transition-opacity duration-300 ${powerSavingMode ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <div className="space-y-3">
-          <Button
-             variant="ghost"
-             fullWidth
-             onClick={() => setPowerSavingMode(true)}
-             className="border border-green-900/50 bg-green-900/10 text-green-500 hover:bg-green-900/30 hover:text-green-400"
-          >
-            <span className="flex items-center justify-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                 <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
-              </svg>
-              GÜÇ TASARRUFU MODU
-            </span>
+          <Button variant="ghost" fullWidth onClick={() => setPowerSavingMode(true)} className="border border-green-900/50 bg-green-900/10 text-green-500 hover:bg-green-900/30 hover:text-green-400">
+            GÜÇ TASARRUFU MODU
           </Button>
-
-          <Button 
-            variant="secondary" 
-            fullWidth 
-            onClick={onBack}
-            className="border-gray-800 bg-gray-900 hover:bg-red-900/30 hover:border-red-800 hover:text-red-400 transition-all"
-          >
+          <Button variant="secondary" fullWidth onClick={onBack} className="border-gray-800 bg-gray-900 hover:bg-red-900/30 hover:border-red-800 hover:text-red-400 transition-all">
             YAYINI DURDUR
           </Button>
         </div>

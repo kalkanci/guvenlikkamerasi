@@ -2,11 +2,10 @@ import { initializeApp } from 'firebase/app';
 import { getDatabase } from 'firebase/database';
 import { getAnalytics } from "firebase/analytics";
 
+// Kullanıcı tarafından sağlanan sabit API anahtarları
 const firebaseConfig = {
   apiKey: "AIzaSyDpp9qj_eCYxexYldZDiQgszYdMQLkIfy4",
   authDomain: "guvenlikkamerasi-ac6d3.firebaseapp.com",
-  // Realtime Database URL'i proje ID'sine göre yapılandırıldı.
-  // Uygulamanın çalışması için bu satır gereklidir.
   databaseURL: "https://guvenlikkamerasi-ac6d3-default-rtdb.firebaseio.com",
   projectId: "guvenlikkamerasi-ac6d3",
   storageBucket: "guvenlikkamerasi-ac6d3.firebasestorage.app",
@@ -15,18 +14,18 @@ const firebaseConfig = {
   measurementId: "G-92JNS48E88"
 };
 
-// Gerçek config değerleri girildiği için artık uygulama kurulmuş sayılır.
+// Config kontrolü
 export const isConfigured = true;
 
 // Uygulama başlatma
 const app = initializeApp(firebaseConfig);
 
-// Analytics'i başlat (Tarayıcı ortamındaysa ve destekleniyorsa)
+// Analytics
 if (typeof window !== 'undefined') {
   try {
     getAnalytics(app);
   } catch (e) {
-    console.log("Analytics başlatılamadı veya desteklenmiyor:", e);
+    console.log("Analytics skipped in dev/node env");
   }
 }
 
